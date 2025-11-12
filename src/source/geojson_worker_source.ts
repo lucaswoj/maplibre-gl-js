@@ -125,7 +125,7 @@ export class GeoJSONWorkerSource extends VectorTileWorkerSource {
 
             this.loaded = {};
 
-            const result: GeoJSONWorkerSourceLoadDataResult = params.dataDiff && isUpdateableGeoJSON(data) ?
+            const result: GeoJSONWorkerSourceLoadDataResult = params.dataDiff ?
                 {shouldApplyDiff: true} :
                 {data};
 
