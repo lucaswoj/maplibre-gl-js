@@ -23,9 +23,10 @@ class Benchmark {
      * The `bench` method is intended to be overridden by subclasses. It should contain the code to be
      * benchmarked. It may access state on `this` set by the `setup` function (but should not modify this
      * state). It will be called multiple times, the total number to be determined by the harness. If
-     * the benchmark involves an asynchronous step, `bench` may return a promise.
+     * the benchmark involves an asynchronous step, `bench` may return a promise. If it returns a number,
+     * that number is recorded as the measurement instead of the wall-clock execution time.
      */
-    bench(): Promise<void> | void {}
+    bench(): Promise<void | number> | void | number {}
 
     /**
      * The `teardown` method is intended to be overridden by subclasses. It will be called once, after
@@ -45,6 +46,7 @@ class Benchmark {
     _measurements: Measurement[];
     _iterationsPerMeasurement: number;
     _start: number;
+    _reported: number[];
 
     /**
      * Run the benchmark by executing `setup` once, sampling the execution time of `bench` some number of
@@ -68,14 +70,20 @@ class Benchmark {
         this._measurements = [];
         this._elapsed = 0;
         this._iterationsPerMeasurement = 1;
+        this._reported = [];
         this._start = performance.now();
 
         const bench = this.bench();
         if (bench instanceof Promise) {
-            return bench.then(() => this._measureAsync());
+            return bench.then(r => { this._record(r); return this._measureAsync(); });
         } else {
+            this._record(bench);
             return this._measureSync();
         }
+    }
+
+    private _record(r: void | number) {
+        if (typeof r === 'number') this._reported.push(r);
     }
 
     private _measureSync(): Promise<Measurement[]> {
@@ -85,15 +93,18 @@ class Benchmark {
             this._elapsed += time;
             if (time < minTimeForMeasurement) {
                 this._iterationsPerMeasurement++;
+            } else if (this._reported.length > 0) {
+                for (const v of this._reported) this._measurements.push({time: v, iterations: 1});
             } else {
                 this._measurements.push({time, iterations: this._iterationsPerMeasurement});
             }
+            this._reported = [];
             if (this._done()) {
                 return this._end();
             }
             this._start = performance.now();
             for (let i = this._iterationsPerMeasurement; i > 0; --i) {
-                this.bench();
+                this._record(this.bench() as void | number);
             }
         }
     }
@@ -104,15 +115,18 @@ class Benchmark {
             this._elapsed += time;
             if (time < minTimeForMeasurement) {
                 this._iterationsPerMeasurement++;
+            } else if (this._reported.length > 0) {
+                for (const v of this._reported) this._measurements.push({time: v, iterations: 1});
             } else {
                 this._measurements.push({time, iterations: this._iterationsPerMeasurement});
             }
+            this._reported = [];
             if (this._done()) {
                 return this._end();
             }
             this._start = performance.now();
             for (let i = this._iterationsPerMeasurement; i > 0; --i) {
-                await this.bench();
+                this._record(await this.bench());
             }
         }
     }

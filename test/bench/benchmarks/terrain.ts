@@ -1,4 +1,4 @@
-import Benchmark, {type Measurement} from '../lib/benchmark';
+import Benchmark from '../lib/benchmark';
 import createMap from '../lib/create_map';
 import type {Map} from '../../../src/ui/map';
 import type {StyleSpecification} from '@maplibre/maplibre-gl-style-spec';
@@ -49,32 +49,16 @@ class TerrainBase extends Benchmark {
             this.map.setTerrain({source: 'dem', exaggeration: 1});
             await this.map.once('idle');
         }
-    }
 
-    async run(): Promise<Measurement[]> {
-        try {
-            await this.setup();
-
-            // Warmup
-            await this.runInner();
-
-            const measurements: Measurement[] = [];
-            for (let i = 0; i < this.minimumMeasurements; i++) {
-                measurements.push({time: await this.runInner(), iterations: 1});
-            }
-
-            this.teardown();
-            return measurements;
-        } catch (e) {
-            console.error(e);
-        }
+        // Warm the HTTP cache by running one full pass before measurement starts.
+        await this.bench();
     }
 
     teardown() {
         this.map.remove();
     }
 
-    private async runInner(): Promise<number> {
+    async bench(): Promise<number> {
         // Clear tile and terrain caches
         for (const id in this.map.style.tileManagers) {
             this.map.style.tileManagers[id].clearTiles();
