@@ -46,7 +46,7 @@ class Benchmark {
     _measurements: Measurement[];
     _iterationsPerMeasurement: number;
     _start: number;
-    _reported: number[];
+    _returns: (number | void)[];
 
     /**
      * Run the benchmark by executing `setup` once, sampling the execution time of `bench` some number of
@@ -68,22 +68,21 @@ class Benchmark {
 
     private _begin(): Promise<Measurement[]> {
         this._measurements = [];
+        this._returns = [];
         this._elapsed = 0;
         this._iterationsPerMeasurement = 1;
-        this._reported = [];
         this._start = performance.now();
 
         const bench = this.bench();
         if (bench instanceof Promise) {
-            return bench.then(r => { this._record(r); return this._measureAsync(); });
+            return bench.then(r => {
+                this._returns.push(r);
+                return this._measureAsync();
+            });
         } else {
-            this._record(bench);
+            this._returns.push(bench);
             return this._measureSync();
         }
-    }
-
-    private _record(r: void | number) {
-        if (typeof r === 'number') this._reported.push(r);
     }
 
     private _measureSync(): Promise<Measurement[]> {
@@ -93,18 +92,15 @@ class Benchmark {
             this._elapsed += time;
             if (time < minTimeForMeasurement) {
                 this._iterationsPerMeasurement++;
-            } else if (this._reported.length > 0) {
-                for (const v of this._reported) this._measurements.push({time: v, iterations: 1});
             } else {
                 this._measurements.push({time, iterations: this._iterationsPerMeasurement});
             }
-            this._reported = [];
             if (this._done()) {
                 return this._end();
             }
             this._start = performance.now();
             for (let i = this._iterationsPerMeasurement; i > 0; --i) {
-                this._record(this.bench() as void | number);
+                this._returns.push(this.bench() as number | void);
             }
         }
     }
@@ -115,25 +111,25 @@ class Benchmark {
             this._elapsed += time;
             if (time < minTimeForMeasurement) {
                 this._iterationsPerMeasurement++;
-            } else if (this._reported.length > 0) {
-                for (const v of this._reported) this._measurements.push({time: v, iterations: 1});
             } else {
                 this._measurements.push({time, iterations: this._iterationsPerMeasurement});
             }
-            this._reported = [];
             if (this._done()) {
                 return this._end();
             }
             this._start = performance.now();
             for (let i = this._iterationsPerMeasurement; i > 0; --i) {
-                this._record(await this.bench());
+                this._returns.push(await this.bench());
             }
         }
     }
 
     private async _end(): Promise<Measurement[]> {
         await this.teardown();
-        return this._measurements;
+        const returns = this._returns.filter(r => typeof r === 'number') as number[];
+        return returns.length > 0
+            ? returns.map(time => ({time, iterations: 1}))
+            : this._measurements;
     }
 
     /*
