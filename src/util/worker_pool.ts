@@ -22,6 +22,7 @@ export class WorkerPool {
         this.workersPromise = null;
     }
 
+    /** Workers that failed to start are not cached, so the next acquirer tries again. */
     async acquire(mapId: number | string): Promise<ActorTarget[]> {
         this.active[mapId] = true;
         if (!this.workersPromise) {
@@ -29,7 +30,11 @@ export class WorkerPool {
             while (promises.length < WorkerPool.workerCount) {
                 promises.push(workerFactory());
             }
-            this.workersPromise = Promise.all(promises);
+            const workersPromise = Promise.all(promises);
+            workersPromise.catch(() => {
+                if (this.workersPromise === workersPromise) this.workersPromise = null;
+            });
+            this.workersPromise = workersPromise;
         }
         return (await this.workersPromise).slice();
     }
